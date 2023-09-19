@@ -33,7 +33,7 @@ test("onEvent called for event", async () => {
   expect(fetchMock.mock.calls[0][1]).toEqual({
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(event1),
+    body: JSON.stringify([event1]),
   });
 });
 
@@ -55,7 +55,7 @@ test("onEvent called for allowed event", async () => {
   expect(fetchMock.mock.calls[0][1]).toEqual({
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(event),
+    body: JSON.stringify([event]),
   });
 
   const event2 = createEvent({ event: "$pageLeave" });

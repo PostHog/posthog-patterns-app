@@ -40,7 +40,7 @@ export const onEvent: Plugin<PatternsPluginInput>["onEvent"] = async (
   response = await fetch(config.webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(event),
+    body: JSON.stringify([event]),
   });
 
   if (response.status != 200) {
