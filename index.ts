@@ -1,50 +1,37 @@
-import {
-  PluginInput,
-  Plugin,
-  Meta,
-  RetryError,
-} from "@posthog/plugin-scaffold";
-import fetch, { Response } from "node-fetch";
+import { Plugin, PluginInput, Webhook } from '@posthog/plugin-scaffold'
 
 type PatternsInputs = {
-  webhookUrl: string;
-  allowedEventTypes: string;
-};
-
-export interface PatternsPluginInput extends PluginInput {
-  config: PatternsInputs;
+    webhookUrl: string
+    allowedEventTypes?: string
 }
 
-// Plugin method that runs on plugin load
-//@ts-ignore
-export async function setupPlugin({ config, global }: Meta<PatternsPluginInput>) {
-  if (config.allowedEventTypes) {
-    let allowedEventTypes = config.allowedEventTypes.split(",");
-    allowedEventTypes = allowedEventTypes.map((eventType: string) => eventType.trim());
-    global.allowedEventTypesSet = new Set(allowedEventTypes);
-  }
+export interface PatternsMetaInput extends PluginInput {
+    config: PatternsInputs
 }
 
-// Plugin method to export events
-export const onEvent: Plugin<PatternsPluginInput>["onEvent"] = async (
-  event,
-  { config, global }: Meta<PatternsPluginInput>
-) => {
-  if (global.allowedEventTypesSet) {
-    if (!global.allowedEventTypesSet.has(event.event)) {
-      return
-    }
-  }
-  
-  let response: Response;
-  response = await fetch(config.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify([event]),
-  });
+const plugin: Plugin<PatternsMetaInput> = {
+    composeWebhook: (event, { config }) => {
+        const allowedEventTypesSet = new Set<string>()
 
-  if (response.status != 200) {
-    const data = await response.json();
-    throw new RetryError(`Export events failed: ${JSON.stringify(data)}`);
-  }
-};
+        if (config.allowedEventTypes) {
+            config.allowedEventTypes
+                .split(',')
+                .map((eventType: string) => eventType.trim())
+                .forEach((e) => allowedEventTypesSet.add(e))
+        }
+
+        // allowedEventTypes is optional, so we only filter if it has a value, otherwise every event gets processed
+        if (allowedEventTypesSet.size !== 0 && !allowedEventTypesSet.has(event.event)) {
+            return null
+        }
+
+        return {
+            url: config.webhookUrl,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([event]),
+        } as Webhook
+    },
+}
+
+export default plugin
