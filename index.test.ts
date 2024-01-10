@@ -1,65 +1,126 @@
-import {
-  createEvent,
-} from "@posthog/plugin-scaffold/test/utils";
-import fetchMock from "jest-fetch-mock";
+import { Meta, PostHogEvent } from '@posthog/plugin-scaffold'
 
-fetchMock.enableMocks();
+import plugin, { PatternsMetaInput } from './index'
 
-import { PatternsPluginInput, onEvent, setupPlugin } from "./index";
-import { Meta } from "@posthog/plugin-scaffold";
+const { composeWebhook } = plugin
 
-const testWebhookUrl =
-  "https://api-staging.patterns.app/api/app/webhooks/wh1234";
+const testWebhookUrl = 'https://api-staging.patterns.app/api/app/webhooks/wh1234'
 
-beforeEach(() => {
-  fetchMock.resetMocks();
-});
-
-test("onEvent called for event", async () => {
-  let meta = {
+const meta: Meta<PatternsMetaInput> = {
+    attachments: {},
+    cache: {
+        set: async () => {
+            //
+        },
+        get: async () => {
+            //
+        },
+        incr: async () => 1,
+        expire: async () => true,
+        lpush: async () => 1,
+        lrange: async () => [],
+        llen: async () => 1,
+        lpop: async () => [],
+        lrem: async () => 1,
+    },
     config: {
-      webhookUrl: testWebhookUrl,
+        webhookUrl: testWebhookUrl,
+    },
+    geoip: {
+        locate: async () => null,
     },
     global: {},
-  } as Meta<PatternsPluginInput>
-  setupPlugin(meta);
-  const event1 = createEvent({ event: "$pageView" });
-
-  // @ts-ignore
-  await onEvent(event1, meta);
-
-  expect(fetchMock.mock.calls.length).toEqual(1);
-  expect(fetchMock.mock.calls[0][0]).toEqual(testWebhookUrl)
-  expect(fetchMock.mock.calls[0][1]).toEqual({
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify([event1]),
-  });
-});
-
-test("onEvent called for allowed event", async () => {
-  let meta = {
-    config: {
-      webhookUrl: testWebhookUrl,
-      allowedEventTypes: "$pageView, $autoCapture, $customEvent1",
+    jobs: {},
+    metrics: {},
+    storage: {
+        set: async () => {
+            //
+        },
+        get: async () => {
+            //
+        },
+        del: async () => {
+            //
+        },
     },
-    global: {},
-  } as Meta<PatternsPluginInput>
-  setupPlugin(meta);
+    utils: {
+        cursor: {
+            init: async () => {
+                //
+            },
+            increment: async () => 1,
+        },
+    },
+}
 
-  const event = createEvent({ event: "$pageView" });
-  // @ts-ignore
-  await onEvent(event, meta);
-  expect(fetchMock.mock.calls.length).toEqual(1);
-  expect(fetchMock.mock.calls[0][0]).toEqual(testWebhookUrl)
-  expect(fetchMock.mock.calls[0][1]).toEqual({
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify([event]),
-  });
+const mockEvent: PostHogEvent = {
+    uuid: '10000000-0000-4000-0000-000000000000',
+    team_id: 1,
+    distinct_id: '1234',
+    event: 'my-event',
+    timestamp: new Date(),
+    properties: {
+        $ip: '127.0.0.1',
+        $elements_chain: 'div:nth-child="1"nth-of-type="2"text="text"',
+        foo: 'bar',
+    },
+}
 
-  const event2 = createEvent({ event: "$pageLeave" });
-  // @ts-ignore
-  await onEvent(event2, meta);
-  expect(fetchMock.mock.calls.length).toEqual(1);
-});
+test('composeWebhook called for event', async () => {
+    if (!composeWebhook) {
+        throw new Error('Not implemented')
+    }
+
+    const webhook = composeWebhook(mockEvent, meta)
+
+    expect(webhook).toHaveProperty('url', testWebhookUrl)
+    expect(webhook?.headers).toMatchObject({
+        'Content-Type': 'application/json',
+    })
+    expect(webhook).toHaveProperty('method', 'POST')
+    expect(webhook).toHaveProperty('body')
+
+    const webhookBody = JSON.parse(webhook?.body || '')
+    expect(webhookBody).toMatchObject(JSON.parse(JSON.stringify([mockEvent]))) // Need to do parse/stringify dance for date string
+})
+
+test('composeWebhook returns webhook for allowed event', async () => {
+    if (!composeWebhook) {
+        throw new Error('Not implemented')
+    }
+
+    const metaWithAllowEventTypes: Meta<PatternsMetaInput> = {
+        ...meta,
+        config: { ...meta.config, allowedEventTypes: '$pageView, $autoCapture, $customEvent1' },
+    }
+
+    const allowedEvent = { ...mockEvent, event: '$pageView' }
+
+    const webhook1 = composeWebhook(allowedEvent, metaWithAllowEventTypes)
+    expect(webhook1).toHaveProperty('url', testWebhookUrl)
+    expect(webhook1?.headers).toMatchObject({
+        'Content-Type': 'application/json',
+    })
+    expect(webhook1).toHaveProperty('method', 'POST')
+    expect(webhook1).toHaveProperty('body')
+
+    const webhook1Body = JSON.parse(webhook1?.body || '')
+    expect(webhook1Body).toMatchObject(JSON.parse(JSON.stringify([allowedEvent]))) // Need to do parse/stringify dance for date string
+
+    const unallowedEvent = { ...mockEvent, event: '$pageLeave' }
+    expect(composeWebhook(unallowedEvent, metaWithAllowEventTypes)).toBeNull()
+})
+
+test('composeWebhook null for unallowed event', async () => {
+    if (!composeWebhook) {
+        throw new Error('Not implemented')
+    }
+
+    const metaWithAllowEventTypes: Meta<PatternsMetaInput> = {
+        ...meta,
+        config: { ...meta.config, allowedEventTypes: '$pageView, $autoCapture, $customEvent1' },
+    }
+
+    const unallowedEvent = { ...mockEvent, event: '$pageLeave' }
+    expect(composeWebhook(unallowedEvent, metaWithAllowEventTypes)).toBeNull()
+})
